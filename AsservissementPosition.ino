@@ -23,6 +23,7 @@ static double Kp = 2.; // gain proportionnel du PID
 static double Ki = 65; // gain intégral du PID
 static double Kd = 0.05; // gain dérivé du PID
 
+static double SECONDS_BEFORE_BACKTRACKING = 5; //nombre de secondes avant la remise à zéro du moteur
 double error; //Erreur par rapport à la commande
 double lastError = 0.;
 
@@ -51,8 +52,8 @@ int varCompteur = 0; // La variable compteur
 ISR(TIMER2_OVF_vect) 
 {
   TCNT2 = 256 - 250; // 250 x 16 µs = 4 ms
-  // 500 * 4 ms = 2000 ms -> 1 mesure toutes les 2 secondes
-  if (varCompteur++ > 400) 
+  // 500 * 4 ms = 2000 ms -> 1 mesure toutes les secondes (demi-période)
+  if (varCompteur++ > 500) 
   { 
     varCompteur = 0;
     
@@ -81,7 +82,8 @@ void loop() {
   if (dotransmit){
     float tempC = baro.getTemperature();
     Serial.print(tempC); Serial.println(" tempC");
-    if (!backtracking) thetaref = 6*tempC; //Génération de la position voulue
+    //Lorsque le moteur est en backtracking, la position souhaitée n'est pas actualisée par la mesure
+    if (!backtracking) thetaref = 6*tempC; // Génération de la position voulue
     Serial.print(thetaref); Serial.println(" thetaref");
    
     dotransmit = 0;
@@ -89,7 +91,9 @@ void loop() {
   periode = millis()-tim;
   tim = millis();
   duree = duree + periode;
-  if (duree > 5*1000) {
+  
+  //Boucle de remise à zéro du moteur
+  if (duree > SECONDS_BEFORE_BACKTRACKING*1000) {
     backtracking = true;
     thetaref = 0.;
   }
@@ -103,9 +107,9 @@ void loop() {
 
 double PID(double theta, double thetaref){
   //Simple PID générant la commande
-  error = thetaref-theta;
+  error = thetaref - theta;
 
-  double intError = error*periode/1000;
+  double intError = error * periode/1000;
   double derError = (error - lastError)/periode*1000;
 
   lastError = error;
